@@ -22,9 +22,9 @@ This is a simple and secure Password Manager Android application designed to sto
 - Delete/Update accounts
 
 ## Screenshots
-![Home Screen](![Screenshot_20240831_110015](https://github.com/user-attachments/assets/312aa677-4067-4484-b71d-69c65d71c146))
-![AddAccount Screen](![Screenshot_20240831_110059](https://github.com/user-attachments/assets/465e1db6-1880-4024-a715-040836eba121))
-![Delete/Update Account Screen](![Screenshot_20240831_110243](https://github.com/user-attachments/assets/2ef8ebc1-5694-4e75-ae2e-101673c6fcda))
+![Home Screen](![home_screen](https://github.com/user-attachments/assets/03f10307-7939-454b-9779-03bf19dd9f5e))
+![AddAccount Screen](![add_screen](https://github.com/user-attachments/assets/2b5dbbde-e7d5-4893-8132-e88b882cef58))
+![Delete/Update Account Screen](![update_delete_screen](https://github.com/user-attachments/assets/930ff51c-d666-45c0-b026-53667d36293f))
 
 ## Usage
 - Add new passwords by clicking on the "Add" button.
