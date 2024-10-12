@@ -6,5 +6,4 @@ plugins {
     alias(libs.plugins.kotlin.parcelize) apply false
     alias(libs.plugins.jetbrainsKotlinKsp) apply false
     alias(libs.plugins.hiltPlugin) apply false
-//    alias(libs.plugins.kotlin.symbol.processing) apply false
 }

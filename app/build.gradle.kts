@@ -3,7 +3,6 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.android)
     //Parcelize
     alias(libs.plugins.kotlin.parcelize)
-//    alias(libs.plugins.kotlin.symbol.processing)
     alias(libs.plugins.jetbrainsKotlinKsp)
     alias(libs.plugins.hiltPlugin)
 }
@@ -67,6 +66,7 @@ dependencies {
     //Room
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.lifecycle.livedata.ktx)
+    implementation(libs.androidx.appcompat)
     annotationProcessor(libs.androidx.room.compiler)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
@@ -77,6 +77,8 @@ dependencies {
     implementation (libs.hilt.android)
     ksp(libs.dagger.compiler)
     ksp(libs.hilt.compiler)
+    //Biometric
+    implementation(libs.biometric)
 
 
     testImplementation(libs.junit)

@@ -1,10 +1,18 @@
 package com.example.passwordmanager.ui
 
+import android.content.Intent
+import android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -12,6 +20,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +44,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,7 +59,10 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import com.example.passwordmanager.R
+import com.example.passwordmanager.biometric.BiometricPromptManager
+import com.example.passwordmanager.biometric.BiometricPromptManager.BiometricResult
 import com.example.passwordmanager.model.AccountData
 import com.example.passwordmanager.theme.PasswordManagerTheme
 import com.example.passwordmanager.viewmodel.MainViewModel
@@ -59,7 +72,10 @@ import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 @OptIn(ExperimentalMaterial3Api::class)
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
+    private val promptManager by lazy {
+        BiometricPromptManager(this)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,317 +87,334 @@ class MainActivity : ComponentActivity() {
                 val getAllAccounts by viewModel.allData.collectAsState(initial = emptyList())
                 var addNewAccount = AccountData(0, null, null, null)
                 var isUpdateDelete = false
-
-
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    topBar = {
-                        TopAppBar(
-                            title = {
-                                Text(
-                                    text = "Password Manager"
+                val biometricResult by promptManager.promptResults.collectAsState(
+                    initial = null
+                )
+                val enrollLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult(),
+                    onResult = {
+                        println("Activity result: $it")
+                    }
+                )
+                LaunchedEffect(key1 = Unit) {
+                    promptManager.showBiometricPrompt(
+                        title = "Password Manager",
+                        description = "Sample prompt description"
+                    )
+                    if (biometricResult is BiometricResult.AuthenticationNotSet) {
+                        if (Build.VERSION.SDK_INT >= 30) {
+                            val enrollIntent = Intent(Settings.ACTION_BIOMETRIC_ENROLL).apply {
+                                putExtra(
+                                    Settings.EXTRA_BIOMETRIC_AUTHENTICATORS_ALLOWED,
+                                    BIOMETRIC_STRONG or DEVICE_CREDENTIAL
                                 )
                             }
-                        )
-                    },
-                    floatingActionButton = {
-                        FloatingActionButton(
-                            onClick = {
-                                isUpdateDelete = false
-                                showSheet = true
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            containerColor = colorResource(id = R.color.blue),
-                            contentColor = Color.White
-                        ) {
-                            Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                        }
-                    }
-                ) { innerPadding ->
-                    Column(modifier = Modifier.padding(innerPadding)) {
-                        LazyColumn(
-                            modifier = Modifier
-                        ) {
-                            items(count = getAllAccounts.size) { index ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                                        .background(
-                                            color = Color.White,
-                                            shape = RoundedCornerShape(50.dp)
-                                        )
-                                        .border(
-                                            width = 1.dp,
-                                            color = colorResource(id = R.color.gray_border),
-                                            shape = RoundedCornerShape(50.dp)
-                                        )
-                                        .clickable {
-                                            isUpdateDelete = true
-                                            showSheet = true
-                                            addNewAccount = getAllAccounts[index]
-                                        },
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = getAllAccounts[index].accountName!!,
-                                        modifier = Modifier.padding(20.dp),
-                                        fontSize = 20.sp
-                                    )
-                                    Text(
-                                        text = "********",
-                                        color = colorResource(id = R.color.gray),
-                                        modifier = Modifier.padding(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.weight(1F))
-                                    Image(
-                                        painter = painterResource(id = R.drawable.ic_forward),
-                                        contentDescription = null,
-                                        modifier = Modifier.padding(horizontal = 10.dp)
-                                    )
-                                }
-                            }
-                        }
-                        if (showSheet) {
-                            DetailBottomSheet(
-                                viewModel, isUpdateDelete = isUpdateDelete, clickedData = addNewAccount
-                            ) {
-                                showSheet = false
-                            }
+                            enrollLauncher.launch(enrollIntent)
                         }
                     }
                 }
 
+                biometricResult?.let { result ->
+                    when (result) {
+                        is BiometricResult.AuthenticationError -> {
+                            Log.e("Biometric", "onCreate: ${result.error}")
+                        }
+
+                        BiometricResult.AuthenticationFailed -> {
+                            Log.e("Biometric", "onCreate: Authentication failed")
+                        }
+
+                        BiometricResult.AuthenticationNotSet -> {
+                            Log.e("Biometric", "onCreate: Authentication not set")
+                        }
+
+                        BiometricResult.AuthenticationSuccess -> {
+                            Log.e("Biometric", "onCreate: Authentication success")
+                            Scaffold(
+                                modifier = Modifier.fillMaxSize(),
+                                topBar = {
+                                    TopAppBar(
+                                        title = {
+                                            Text(
+                                                text = "Password Manager"
+                                            )
+                                        }
+                                    )
+                                },
+                                floatingActionButton = {
+                                    FloatingActionButton(
+                                        onClick = {
+                                            isUpdateDelete = false
+                                            showSheet = true
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        containerColor = colorResource(id = R.color.blue),
+                                        contentColor = Color.White
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = null
+                                        )
+                                    }
+                                }
+                            ) { innerPadding ->
+                                MainContent(
+                                    innerPadding,
+                                    getAllAccounts,
+                                    isUpdateDelete,
+                                    showSheet,
+                                    addNewAccount,
+                                    viewModel
+                                )
+                            }
+                        }
+
+                        BiometricResult.FeatureUnavailable -> {
+                            Log.e("Biometric", "onCreate: Feature unavailable")
+                        }
+
+                        BiometricResult.HardwareUnavailable -> {
+                            Log.e("Biometric", "onCreate: Hardware unavailable")
+                        }
+                    }
+                }
             }
         }
     }
-}
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DetailBottomSheet(
-    viewModel: MainViewModel,
-    isUpdateDelete: Boolean,
-    clickedData: AccountData?,
-    onDismiss: () -> Unit
-) {
-    val modalBottomSheetState = rememberModalBottomSheetState()
-    val scope = rememberCoroutineScope()
-
-    ModalBottomSheet(
-        onDismissRequest = { onDismiss() },
-        sheetState = modalBottomSheetState,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
-        modifier = Modifier.fillMaxSize(),
+    @Composable
+    private fun MainContent(
+        innerPadding: PaddingValues,
+        getAllAccounts: List<AccountData>,
+        isUpdateDelete: Boolean,
+        showSheet: Boolean,
+        addNewAccount: AccountData,
+        viewModel: MainViewModel
     ) {
-        var accountName by remember {
-            mutableStateOf("")
-        }
-        var accountNameData by remember {
-            mutableStateOf(clickedData!!.accountName)
-        }
-        var email by remember {
-            mutableStateOf("")
-        }
-        var emailData by remember {
-            mutableStateOf(clickedData!!.email)
-        }
-        var password by remember {
-            mutableStateOf("")
-        }
-        var passwordData by remember {
-            mutableStateOf(clickedData!!.password)
-        }
-        val context = LocalContext.current
-
-        Column {
-            TextField(
-                value = if (!isUpdateDelete) {
-                    accountName
-                } else {
-                    accountNameData!!
-                },
-                onValueChange = {
-                    if (!isUpdateDelete) {
-                        accountName = it
-                    } else {
-                        accountNameData = it
-                    }
-                },
+        var isUpdateDelete1 = isUpdateDelete
+        var showSheet1 = showSheet
+        var addNewAccount1 = addNewAccount
+        Column(modifier = Modifier.padding(innerPadding)) {
+            LazyColumn(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 30.dp, vertical = 10.dp)
-                    .border(
-                        width = 1.dp,
-                        color = colorResource(id = R.color.gray_border),
-                        shape = RoundedCornerShape(6.dp)
-                    ),
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    unfocusedContainerColor = Color.White,
-                    focusedContainerColor = Color.White,
-                    focusedIndicatorColor = Color.White,
-                    unfocusedIndicatorColor = Color.White
-                ),
-                label = {
-                    Text(
-                        text = "Account Name",
-                        color = colorResource(id = R.color.label_color),
-                        fontSize = 13.sp
-                    )
-                }
-            )
-            TextField(
-                value = if (!isUpdateDelete) {
-                    email
-                } else {
-                    emailData!!
-                },
-                onValueChange = {
-                    if (!isUpdateDelete) {
-                        email = it
-                    } else {
-                        emailData = it
+            ) {
+                items(count = getAllAccounts.size) { index ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                            .background(
+                                color = Color.White,
+                                shape = RoundedCornerShape(50.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = colorResource(id = R.color.gray_border),
+                                shape = RoundedCornerShape(50.dp)
+                            )
+                            .clickable {
+                                isUpdateDelete1 = true
+                                showSheet1 = true
+                                addNewAccount1 = getAllAccounts[index]
+                            },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = getAllAccounts[index].accountName!!,
+                            modifier = Modifier.padding(20.dp),
+                            fontSize = 20.sp
+                        )
+                        Text(
+                            text = "********",
+                            color = colorResource(id = R.color.gray),
+                            modifier = Modifier.padding(20.dp)
+                        )
+                        Spacer(modifier = Modifier.weight(1F))
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_forward),
+                            contentDescription = null,
+                            modifier = Modifier.padding(horizontal = 10.dp)
+                        )
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 30.dp, vertical = 10.dp)
-                    .border(
-                        width = 1.dp,
-                        color = colorResource(id = R.color.gray_border),
-                        shape = RoundedCornerShape(6.dp)
-                    ),
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    unfocusedContainerColor = Color.White,
-                    focusedContainerColor = Color.White,
-                    focusedIndicatorColor = Color.White,
-                    unfocusedIndicatorColor = Color.White
-                ),
-                label = {
-                    Text(
-                        text = "Username/ Email",
-                        color = colorResource(id = R.color.label_color),
-                        fontSize = 13.sp
-                    )
                 }
-            )
-            TextField(
-                value = if (!isUpdateDelete) {
-                    password
-                } else {
-                    passwordData!!
-                },
-                onValueChange = {
-                    if (!isUpdateDelete) {
-                        password = it
-                    } else {
-                        passwordData = it
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 30.dp, vertical = 10.dp)
-                    .border(
-                        width = 1.dp,
-                        color = colorResource(id = R.color.gray_border),
-                        shape = RoundedCornerShape(6.dp)
-                    ),
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    unfocusedContainerColor = Color.White,
-                    focusedContainerColor = Color.White,
-                    focusedIndicatorColor = Color.White,
-                    unfocusedIndicatorColor = Color.White
-                ),
-                label = {
-                    Text(
-                        text = "Password",
-                        color = colorResource(id = R.color.label_color),
-                        fontSize = 13.sp
-                    )
-                }
-            )
-            if (!isUpdateDelete) {
-                Button(
-                    onClick = {
-                        if (accountName.isNotEmpty() && email.isNotEmpty() && password.isNotEmpty()) {
-                            scope.launch(Dispatchers.IO) {
-                                viewModel.insertData(
-                                    AccountData(
-                                        null,
-                                        accountName,
-                                        email,
-                                        password
-                                    )
-                                )
-                                onDismiss()
-                            }
-                        } else {
-                            Toast.makeText(context, "Please enter all fields", Toast.LENGTH_SHORT)
-                                .show()
-                        }
-                    }, modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(30.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Black
-                    ),
-                    shape = RoundedCornerShape(20.dp)
+            }
+            if (showSheet1) {
+                DetailBottomSheet(
+                    viewModel, isUpdateDelete = isUpdateDelete1, clickedData = addNewAccount1
                 ) {
-                    Text(text = "Add New Account")
+                    showSheet1 = false
                 }
-            } else {
-                Row(
+            }
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun DetailBottomSheet(
+        viewModel: MainViewModel,
+        isUpdateDelete: Boolean,
+        clickedData: AccountData?,
+        onDismiss: () -> Unit
+    ) {
+        val modalBottomSheetState = rememberModalBottomSheetState()
+        val scope = rememberCoroutineScope()
+        var closeBottomSheet by remember {
+            mutableStateOf(false)
+        }
+
+        ModalBottomSheet(
+            onDismissRequest = { onDismiss() },
+            sheetState = modalBottomSheetState,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            var accountName by remember {
+                mutableStateOf("")
+            }
+            var accountNameData by remember {
+                mutableStateOf(clickedData!!.accountName)
+            }
+            var email by remember {
+                mutableStateOf("")
+            }
+            var emailData by remember {
+                mutableStateOf(clickedData!!.email)
+            }
+            var password by remember {
+                mutableStateOf("")
+            }
+            var passwordData by remember {
+                mutableStateOf(clickedData!!.password)
+            }
+            val context = LocalContext.current
+
+            Column {
+                TextField(
+                    value = if (!isUpdateDelete) {
+                        accountName
+                    } else {
+                        accountNameData!!
+                    },
+                    onValueChange = {
+                        if (!isUpdateDelete) {
+                            accountName = it
+                        } else {
+                            accountNameData = it
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 30.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    Button(
-                        onClick = {
-                            if (accountNameData!!.isNotEmpty() && emailData!!.isNotEmpty() && passwordData!!.isNotEmpty()) {
-                                scope.launch(Dispatchers.IO) {
-                                    viewModel.updateData(
-                                        AccountData(
-                                            clickedData!!.id,
-                                            accountNameData,
-                                            emailData,
-                                            passwordData
-                                        )
-                                    )
-                                    onDismiss()
-                                }
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "Please enter all fields",
-                                    Toast.LENGTH_SHORT
-                                )
-                                    .show()
-                            }
-                        }, modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Black
+                        .padding(horizontal = 30.dp, vertical = 10.dp)
+                        .border(
+                            width = 1.dp,
+                            color = colorResource(id = R.color.gray_border),
+                            shape = RoundedCornerShape(6.dp)
                         ),
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Text(text = "Update")
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        unfocusedContainerColor = Color.White,
+                        focusedContainerColor = Color.White,
+                        focusedIndicatorColor = Color.White,
+                        unfocusedIndicatorColor = Color.White
+                    ),
+                    label = {
+                        Text(
+                            text = "Account Name",
+                            color = colorResource(id = R.color.label_color),
+                            fontSize = 13.sp
+                        )
                     }
+                )
+                TextField(
+                    value = if (!isUpdateDelete) {
+                        email
+                    } else {
+                        emailData!!
+                    },
+                    onValueChange = {
+                        if (!isUpdateDelete) {
+                            email = it
+                        } else {
+                            emailData = it
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 30.dp, vertical = 10.dp)
+                        .border(
+                            width = 1.dp,
+                            color = colorResource(id = R.color.gray_border),
+                            shape = RoundedCornerShape(6.dp)
+                        ),
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        unfocusedContainerColor = Color.White,
+                        focusedContainerColor = Color.White,
+                        focusedIndicatorColor = Color.White,
+                        unfocusedIndicatorColor = Color.White
+                    ),
+                    label = {
+                        Text(
+                            text = "Username/ Email",
+                            color = colorResource(id = R.color.label_color),
+                            fontSize = 13.sp
+                        )
+                    }
+                )
+                TextField(
+                    value = if (!isUpdateDelete) {
+                        password
+                    } else {
+                        passwordData!!
+                    },
+                    onValueChange = {
+                        if (!isUpdateDelete) {
+                            password = it
+                        } else {
+                            passwordData = it
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 30.dp, vertical = 10.dp)
+                        .border(
+                            width = 1.dp,
+                            color = colorResource(id = R.color.gray_border),
+                            shape = RoundedCornerShape(6.dp)
+                        ),
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        unfocusedContainerColor = Color.White,
+                        focusedContainerColor = Color.White,
+                        focusedIndicatorColor = Color.White,
+                        unfocusedIndicatorColor = Color.White
+                    ),
+                    label = {
+                        Text(
+                            text = "Password",
+                            color = colorResource(id = R.color.label_color),
+                            fontSize = 13.sp
+                        )
+                    }
+                )
+                if (!isUpdateDelete) {
                     Button(
                         onClick = {
-                            if (accountNameData!!.isNotEmpty() && emailData!!.isNotEmpty() && passwordData!!.isNotEmpty()) {
+                            if (accountName.isNotEmpty() && email.isNotEmpty() && password.isNotEmpty()) {
                                 scope.launch(Dispatchers.IO) {
-                                    viewModel.deleteData(
+                                    viewModel.insertData(
                                         AccountData(
-                                            clickedData!!.id,
+                                            null,
                                             accountName,
                                             email,
                                             password
                                         )
                                     )
+                                    Log.e("DismissOnAdd", "DetailBottomSheet: Dismiss", )
+                                    scope.launch {
+                                        Log.e("State>>", "DetailBottomSheet: ${modalBottomSheetState.currentValue}")
+                                        modalBottomSheetState.hide()
+                                    }
                                     onDismiss()
                                 }
                             } else {
@@ -392,13 +425,84 @@ fun DetailBottomSheet(
                                 )
                                     .show()
                             }
-                        }, modifier = Modifier.weight(1f),
+                        }, modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(30.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Red
+                            containerColor = Color.Black
                         ),
                         shape = RoundedCornerShape(20.dp)
                     ) {
-                        Text(text = "Delete")
+                        Text(text = "Add New Account")
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 30.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Button(
+                            onClick = {
+                                if (accountNameData!!.isNotEmpty() && emailData!!.isNotEmpty() && passwordData!!.isNotEmpty()) {
+                                    scope.launch(Dispatchers.IO) {
+                                        viewModel.updateData(
+                                            AccountData(
+                                                clickedData!!.id,
+                                                accountNameData,
+                                                emailData,
+                                                passwordData
+                                            )
+                                        )
+                                        onDismiss()
+                                    }
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Please enter all fields",
+                                        Toast.LENGTH_SHORT
+                                    )
+                                        .show()
+                                }
+                            }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(text = "Update")
+                        }
+                        Button(
+                            onClick = {
+                                if (accountNameData!!.isNotEmpty() && emailData!!.isNotEmpty() && passwordData!!.isNotEmpty()) {
+                                    scope.launch(Dispatchers.IO) {
+                                        viewModel.deleteData(
+                                            AccountData(
+                                                clickedData!!.id,
+                                                accountName,
+                                                email,
+                                                password
+                                            )
+                                        )
+                                        onDismiss()
+                                    }
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Please enter all fields",
+                                        Toast.LENGTH_SHORT
+                                    )
+                                        .show()
+                                }
+                            }, modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.Red
+                            ),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text(text = "Delete")
+                        }
                     }
                 }
             }
